@@ -1,0 +1,235 @@
+## ams_version=1.0
+
+Model Main_ProductionPlanning {
+    Comment: {
+        "Keywords:
+        LP, Linear Program, Measurement Units, Sensitivity Analysis, What-If Analysis, Worked Example."
+    }
+    Section Model_Formulation {
+        DeclarationSection Set_Declaration {
+            Set S_Products {
+                Index: PRODUCT;
+                Parameter: Pe_Product;
+                OrderBy: PRODUCT;
+                Definition: data { A, B, C, D };
+            }
+            Set S_Months {
+                Index: MONTH;
+                Definition: data { 1, 2, 3, 4 };
+            }
+        }
+        DeclarationSection Parameter_Declaration {
+            Parameter P_Demand {
+                IndexDomain: (PRODUCT,MONTH);
+            }
+            Parameter P_Inventory {
+                IndexDomain: PRODUCT;
+            }
+            Parameter P_Setup {
+                IndexDomain: PRODUCT;
+            }
+            Parameter P_GlobalCapacity {
+                Definition: 50000;
+            }
+            Parameter P_Capacity {
+                IndexDomain: (PRODUCT,MONTH);
+            }
+        }
+        DeclarationSection Domain_Declaration;
+        DeclarationSection Variable_Declaration {
+            Variable V_Packaged {
+                IndexDomain: (PRODUCT,MONTH);
+                Range: nonnegative;
+            }
+            Variable V_Unpackaged {
+                IndexDomain: (PRODUCT,MONTH);
+                Range: nonnegative;
+            }
+            Variable V_InventoryPackaged {
+                IndexDomain: (PRODUCT,MONTH);
+                Range: nonnegative;
+            }
+            Variable V_InventoryUnpackaged {
+                IndexDomain: (PRODUCT,MONTH);
+                Range: nonnegative;
+            }
+            Variable V_BIN_PackingTrigger {
+                IndexDomain: (PRODUCT,MONTH);
+                Range: binary;
+            }
+        }
+        DeclarationSection Constraint_Declaration {
+            Constraint C_Demand {
+                IndexDomain: (PRODUCT,MONTH);
+                Definition: {
+                    
+                    V_Packaged(PRODUCT, MONTH)
+                    
+                    + V_InventoryPackaged(PRODUCT, MONTH-1)
+                    
+                    - V_InventoryPackaged(PRODUCT, MONTH)
+                    
+                    =
+                    
+                    P_EXE_DemandOfProductInPeriod(PRODUCT, MONTH)
+                }
+            }
+            Constraint C_Production {
+                IndexDomain: (PRODUCT,MONTH);
+                Definition: {
+                    
+                    V_Unpackaged(PRODUCT, MONTH)
+                    
+                    + V_InventoryUnpackaged(PRODUCT, MONTH-1)
+                    
+                    - V_InventoryUnPackaged(PRODUCT, MONTH)
+                    
+                    =
+                    
+                    V_Packaged(PRODUCT, MONTH)
+                }
+            }
+            Constraint C_GlobalCapacity {
+                IndexDomain: MONTH;
+                Definition: {
+                    
+                    Sum[PRODUCT,
+                    	V_Packaged(PRODUCT, MONTH)]
+                    
+                    <= P_GlobalCapacity
+                }
+            }
+            Constraint C_Capacity {
+                IndexDomain: (PRODUCT,MONTH);
+                Definition: {
+                    
+                    V_Unpackaged(PRODUCT, MONTH)
+                    
+                    <= P_Capacity(PRODUCT, MONTH)
+                }
+            }
+            Constraint C_Setup {
+                IndexDomain: (PRODUCT,MONTH);
+                Definition: {
+                    
+                    V_Packaged(PRODUCT, MONTH)
+                    
+                    <=
+                    
+                    P_GlobalCapacity * V_BIN_PackingTrigger(PRODUCT, MONTH)
+                }
+            }
+        }
+        DeclarationSection Mathematical_Program_Declaration {
+            Variable V_ObjectiveFunction {
+                Range: free;
+                Definition: {
+                    
+                    Sum[(PRODUCT, MONTH),
+                    	P_Inventory(PRODUCT) * V_InventoryPackaged(PRODUCT, MONTH)
+                    	+ (P_Inventory(PRODUCT) - 4) * V_InventoryUnpackaged(PRODUCT, MONTH)
+                    
+                    	+ P_SetUp(PRODUCT) * V_BIN_PackingTrigger(PRODUCT, MONTH)]
+                }
+            }
+            MathematicalProgram Mp_ProductionPlanning {
+                Objective: V_ObjectiveFunction;
+                Direction: minimize;
+                Constraints: AllConstraints;
+                Variables: AllVariables;
+                Type: Automatic;
+            }
+        }
+    }
+    Section Additional_Identifiers {
+        DeclarationSection Quantity_Declaration {
+            Quantity SI_Mass {
+                BaseUnit: kg;
+                Conversions: ton -> kg : # -> # * 1000;
+                Comment: "Expresses the value for the amount of matter.";
+            }
+            Quantity SI_Length {
+                BaseUnit: m;
+                Comment: "Expresses the value of a distance.";
+            }
+            Quantity SI_Area {
+                BaseUnit: m2 = m^2;
+                Conversions: hectare -> m2 : # -> # * 10000;
+                Comment: "Expresses the value of the extent of a surface.";
+            }
+            Quantity SI_Unitless {
+                BaseUnit: -;
+                Conversions: %  -> - : # -> # / 100;
+                Comment: "Expresses a dimensionless value.";
+            }
+            Quantity SI_Time_Duration {
+                BaseUnit: s;
+                Conversions: hour -> s : # -> # * 3600;
+                Comment: "Expresses the value for the duration of periods.";
+            }
+            Quantity SI_Volume {
+                BaseUnit: m3 = m^3;
+                Conversions: kcub -> m3 : # -> # * 1000;
+                Comment: "Expresses the value of solid content.";
+            }
+            Quantity Currency {
+                BaseUnit: $;
+            }
+        }
+        DeclarationSection Sensititvity_Analysis_Declaration {
+            Parameter NrOfSteps {
+                Definition: 10;
+            }
+            Parameter P_SOL_ObjectiveFunctionShiftingDemand {
+                IndexDomain: STEP;
+            }
+            Parameter P_SOL_ObjectiveFunctionShiftingInventoryCost {
+                IndexDomain: STEP;
+                Unit: $;
+            }
+            Parameter P_EXE_DemandOfProductInPeriod {
+                IndexDomain: (PRODUCT,MONTH);
+            }
+            Parameter P_EXE_CostOfInventory {
+                Unit: $/kg;
+            }
+        }
+    }
+    Section Viewer_Declaration {
+        DeclarationSection Viewer_Data {
+            ElementParameter ACase {
+                Range: AllCases;
+            }
+            Set CurvePoints {
+                SubsetOf: Integers;
+                Index: STEP;
+                Definition: ElementRange(0,NrOfSteps);
+            }
+        }
+    }
+    Procedure MainInitialization;
+    Procedure MainExecution {
+        Body: {
+            
+            !for STEP
+            !do
+            !
+            ! 	P_EXE_DemandOfProductInPeriod(PRODUCT, MONTH) := P_Demand(PRODUCT, MONTH) * val(STEP);
+            !	empty AllVariables;
+            !	Solve Mp_ProductionPlanning;
+            !	P_SOL_ObjectiveFunctionShiftingDemand(STEP) := V_ObjectiveFunction;
+            !
+            !endfor;
+            
+            P_EXE_DemandOfProductInPeriod(PRODUCT, MONTH) := P_Demand(PRODUCT, MONTH);
+            
+            empty AllVariables;
+            Solve Mp_ProductionPlanning;
+        }
+    }
+    Procedure MainTermination {
+        Body: {
+            return 1;
+        }
+    }
+}
